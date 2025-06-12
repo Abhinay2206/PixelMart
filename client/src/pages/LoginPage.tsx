@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useApp } from '../hooks/useApp';
+import { useAuth } from '../hooks/useAuth';
 
 interface LocationState {
   from?: { pathname: string };
@@ -9,7 +9,7 @@ interface LocationState {
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, state } = useApp();
+  const { login, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -23,7 +23,7 @@ export default function LoginPage() {
     
     try {
       await login(email, password);
-      // Get user from localStorage (AppContext sets it)
+      // Get user from localStorage after successful login
       const userStr = localStorage.getItem('user');
       let user = null;
       try {
@@ -31,6 +31,8 @@ export default function LoginPage() {
       } catch {
         // ignore JSON parse error
       }
+      
+      // Redirect based on user role
       if (user && user.isAdmin) {
         navigate('/admin', { replace: true });
       } else if (from && from !== '/login') {
@@ -92,7 +94,7 @@ export default function LoginPage() {
             <div className="text-red-500 text-sm text-center">{error}</div>
           )}
 
-          {state.isLoading ? (
+          {loading ? (
             <div className="flex justify-center">
               <div className="animate-spin h-5 w-5 border-2 border-blue-500 rounded-full border-t-transparent"></div>
             </div>

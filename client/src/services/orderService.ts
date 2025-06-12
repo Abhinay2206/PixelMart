@@ -66,12 +66,12 @@ export const orderService = {
 
   // Add these functions to orderService
   getAllOrders: async () => {
-    const response = await api.get('/api/orders/admin/orders');
+    const response = await api.get('/orders/admin/orders');
     return response.data;
   },
 
   updateOrderStatus: async (orderId: string, status: string) => {
-    const response = await api.put(`/api/orders/admin/orders/${orderId}`, { status });
+    const response = await api.put(`/orders/admin/orders/${orderId}`, { status });
     return response.data;
   }
 };

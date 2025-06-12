@@ -127,6 +127,9 @@ export const getOrders = (): Promise<AxiosResponse<OrdersResponse>> =>
   api.get('/orders/myorders');
 
 // Admin endpoints
+export const createProduct = (product: Partial<Product>): Promise<AxiosResponse<Product>> => 
+  api.post('/products', product);
+
 export const updateProduct = (productId: string, updates: Partial<Product>): Promise<AxiosResponse<Product>> => 
   api.put(`/products/${productId}`, updates);
 
@@ -135,6 +138,26 @@ export const deleteProduct = (productId: string): Promise<AxiosResponse<void>> =
 
 export const getAllOrders = (): Promise<AxiosResponse<{ orders: Order[] }>> => 
   api.get('/orders');
+
+export const updateOrderStatus = (orderId: string, status: string): Promise<AxiosResponse<Order>> => 
+  api.put(`/orders/${orderId}/status`, { status });
+
+export const getAllUsers = (): Promise<AxiosResponse<{ users: User[] }>> => 
+  api.get('/admin/users');
+
+export const deleteUser = (userId: string): Promise<AxiosResponse<void>> => 
+  api.delete(`/admin/users/${userId}`);
+
+export const getAnalytics = (): Promise<AxiosResponse<{
+  totalRevenue: number;
+  totalOrders: number;
+  totalUsers: number;
+  totalProducts: number;
+  recentOrders: Order[];
+  topProducts: Product[];
+  salesByMonth: { month: string; sales: number }[];
+}>> => 
+  api.get('/admin/analytics');
 
 // Error handling
 export const handleApiError = (error: unknown) => {

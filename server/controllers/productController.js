@@ -23,22 +23,53 @@ const getProductById = async (req, res) => {
 
 const createProduct = async (req, res) => {
   try {
-    const { name, description, price, category, stock } = req.body;
+    const { 
+      title, 
+      name,
+      description, 
+      price, 
+      category, 
+      stock, 
+      image,
+      platform,
+      developer,
+      publisher,
+      releaseDate,
+      rating,
+      genre,
+      ageRating
+    } = req.body;
     
-    if (!name || !price) {
-      return res.status(400).json({ message: 'Name and price are required' });
+    const productTitle = title || name;
+    if (!productTitle) {
+      return res.status(400).json({ message: 'Product title is required' });
     }
 
-    const product = await Product.create({
-      name,
-      description,
-      price,
-      category,
-      stock
-    });
+    if (!price || price < 0) {
+      return res.status(400).json({ message: 'Valid price is required' });
+    }
 
+    const productData = {
+      title: productTitle,
+      name: productTitle, // For backwards compatibility
+      description: description || '',
+      price: parseFloat(price),
+      category: category || 'Game',
+      stock: parseInt(stock) || 0,
+      image: image || 'https://images.pexels.com/photos/442576/pexels-photo-442576.jpeg?auto=compress&cs=tinysrgb&w=800',
+      platform: Array.isArray(platform) ? platform : [platform || 'PC'],
+      developer: developer || 'Independent',
+      publisher: publisher || 'Independent',
+      releaseDate: releaseDate || new Date().toISOString().split('T')[0],
+      rating: parseFloat(rating) || 0,
+      genre: genre || 'Other',
+      ageRating: ageRating || 'RP'
+    };
+
+    const product = await Product.create(productData);
     res.status(201).json(product);
   } catch (err) {
+    console.error('Error creating product:', err);
     res.status(500).json({ message: 'Error creating product', error: err.message });
   }
 };

@@ -141,7 +141,7 @@ export default function CheckoutPage() {
 
       const order = await orderService.createOrder(orderData);
       dispatch({ type: 'CLEAR_CART' });
-      navigate(`/order-confirmation?orderId=${order.id}`);
+      navigate(`/order-confirmation?orderId=${order._id}`);
     } catch (err) {
       setSubmissionError(
         err instanceof Error 

@@ -1,9 +1,13 @@
 const mongoose = require('mongoose');
 
 const productSchema = new mongoose.Schema({
+  title: { 
+    type: String, 
+    required: [true, 'Product title is required'], 
+    trim: true 
+  },
   name: { 
     type: String, 
-    required: [true, 'Product name is required'], 
     trim: true 
   },
   description: {
@@ -15,6 +19,10 @@ const productSchema = new mongoose.Schema({
     type: Number,
     required: [true, 'Product price is required'],
     min: [0, 'Price cannot be negative']
+  },
+  image: {
+    type: String,
+    default: 'https://images.pexels.com/photos/442576/pexels-photo-442576.jpeg?auto=compress&cs=tinysrgb&w=800'
   },
   images: [
     {
@@ -31,15 +39,13 @@ const productSchema = new mongoose.Schema({
   category: {
     type: String,
     required: true,
-    enum: ['games', 'consoles', 'accessories', 'merchandise', 'controllers', 'pc-gaming'],
-    default: 'games'
+    default: 'Game'
   },
-  platform: {
+  platform: [{
     type: String,
-    required: true,
     enum: ['PS5', 'PS4', 'Xbox Series X|S', 'Xbox One', 'Nintendo Switch', 'PC', 'Multiple', 'Other'],
-    default: 'Other'
-  },
+    default: 'PC'
+  }],
   genre: {
     type: String,
     enum: ['Action', 'Adventure', 'RPG', 'Strategy', 'Sports', 'Racing', 'FPS', 'Horror', 'Other'],
@@ -54,7 +60,8 @@ const productSchema = new mongoose.Schema({
     default: 'Independent'
   },
   releaseDate: {
-    type: Date
+    type: String,
+    default: () => new Date().toISOString().split('T')[0]
   },
   rating: {
     type: Number,
@@ -76,5 +83,18 @@ const productSchema = new mongoose.Schema({
     default: false
   }
 }, { timestamps: true });
+
+// Create virtual for 'id' field to match frontend expectations
+productSchema.virtual('id').get(function() {
+  return this._id.toHexString();
+});
+
+productSchema.virtual('productId').get(function() {
+  return this._id.toHexString();
+});
+
+productSchema.set('toJSON', {
+  virtuals: true
+});
 
 module.exports = mongoose.model('Product', productSchema);

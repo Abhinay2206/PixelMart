@@ -25,14 +25,16 @@ export interface CartItem {
 
 export interface User {
   id: string;
+  _id?: string;
   email: string;
   name: string;
   isAdmin: boolean;
+  createdAt?: string;
 }
 
 export interface Order {
   _id: string;
-  user: {
+  user?: {
     email: string;
   };
   items: Array<{
@@ -40,8 +42,8 @@ export interface Order {
     quantity: number;
   }>;
   total: number;
-  status: 'pending' | 'processing' | 'completed' | 'cancelled';
-  createdAt: string;
+  status: 'pending' | 'processing' | 'completed' | 'cancelled' | 'shipped' | 'delivered';
+  createdAt?: string;
 }
 
 export interface ShippingAddress {

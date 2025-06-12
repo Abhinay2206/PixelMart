@@ -25,13 +25,26 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
   const checkAuth = async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('No token found');
+      const userStr = localStorage.getItem('user');
+      
+      if (!token || !userStr) {
+        throw new Error('No token or user data found');
       }
+      
+      // First try to parse stored user data
+      try {
+        const storedUser = JSON.parse(userStr);
+        setUser(storedUser);
+      } catch {
+        throw new Error('Invalid user data');
+      }
+      
+      // Then verify with server
       const response = await api.get('/auth/me');
       setUser(response.data);
     } catch (err) {
       localStorage.removeItem('token');
+      localStorage.removeItem('user');
       setUser(null);
       console.error('Auth check failed:', err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -41,20 +54,25 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
 
   const login = async (email: string, password: string) => {
     try {
+      setLoading(true);
       const response = await api.post('/auth/login', { email, password });
       const { token, user } = response.data;
       localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
       setUser(user);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Login failed';
       console.error('Login failed:', message);
       throw new Error(message);
+    } finally {
+      setLoading(false);
     }
   };
 
   const logout = async () => {
-      localStorage.removeItem('token');
-      setUser(null);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
   };
 
   useEffect(() => {

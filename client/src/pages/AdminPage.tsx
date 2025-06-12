@@ -1,8 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Package, Users, TrendingUp, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { 
+  Plus, 
+  Edit2, 
+  Trash2, 
+  Package, 
+  Users, 
+  TrendingUp, 
+  AlertTriangle
+} from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { Product, Order } from '../types';
-import { orderService } from '../services/orderService';
+import { Product, Order, User } from '../types';
+import { adminService, type AnalyticsData } from '../services/adminService';
+import { getProducts } from '../services/api';
 
 export default function AdminPage() {
   const { state, dispatch } = useApp();
@@ -10,6 +19,8 @@ export default function AdminPage() {
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
@@ -29,48 +40,106 @@ export default function AdminPage() {
   const stats = {
     totalProducts: state.products.length,
     totalOrders: orders.length,
+    totalUsers: users.length,
+    totalRevenue: analytics?.totalRevenue || 0,
     lowStockItems: state.products.filter(p => typeof p.stock === 'number' && p.stock <= 5).length,
     outOfStockItems: state.products.filter(p => p.stock === 0).length,
   };
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
-
-  const fetchOrders = async () => {
+  const fetchProducts = useCallback(async () => {
     try {
-      const data = await orderService.getAllOrders();
+      const response = await getProducts();
+      dispatch({ type: 'SET_PRODUCTS', payload: response.data });
+    } catch (error) {
+      console.error('Failed to fetch products:', error);
+    }
+  }, [dispatch]);
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      const data = await adminService.getAllOrders();
       setOrders(data);
-      setLoading(false);
     } catch (error) {
       console.error('Failed to fetch orders:', error);
-      setLoading(false);
     }
-  };
+  }, []);
 
-  const handleAddProduct = () => {
+  const fetchUsers = useCallback(async () => {
+    try {
+      const data = await adminService.getAllUsers();
+      setUsers(data);
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+    }
+  }, []);
+
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      const data = await adminService.getAnalytics();
+      setAnalytics(data);
+    } catch (error) {
+      console.error('Failed to fetch analytics:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        await Promise.all([
+          fetchProducts(),
+          fetchOrders(),
+          fetchUsers(),
+          fetchAnalytics()
+        ]);
+      } catch (error) {
+        console.error('Failed to load admin data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }, [fetchProducts, fetchOrders, fetchUsers, fetchAnalytics]);
+
+  const handleAddProduct = async () => {
     if (newProduct.title && newProduct.price) {
-      const id = Date.now().toString();
-      const product: Product = {
-        id,
-        productId: id,
-        _id: id,
-        title: newProduct.title || '',
-        description: newProduct.description || '',
-        price: newProduct.price || 0,
-        image: newProduct.image || 'https://images.pexels.com/photos/442576/pexels-photo-442576.jpeg?auto=compress&cs=tinysrgb&w=800',
-        category: newProduct.category || 'Game',
-        platform: newProduct.platform || ['PC'],
-        releaseDate: newProduct.releaseDate || new Date().toISOString().split('T')[0],
-        stock: newProduct.stock || 0,
-        rating: newProduct.rating || 0,
-        developer: newProduct.developer || '',
-        publisher: newProduct.publisher || '',
-      };
+      try {
+        const productData = {
+          title: newProduct.title,
+          description: newProduct.description || '',
+          price: newProduct.price,
+          image: newProduct.image || 'https://images.pexels.com/photos/442576/pexels-photo-442576.jpeg?auto=compress&cs=tinysrgb&w=800',
+          category: newProduct.category || 'Game',
+          platform: Array.isArray(newProduct.platform) ? newProduct.platform : [newProduct.platform || 'PC'],
+          releaseDate: newProduct.releaseDate || new Date().toISOString().split('T')[0],
+          stock: newProduct.stock || 0,
+          rating: newProduct.rating || 0,
+          developer: newProduct.developer || 'Independent',
+          publisher: newProduct.publisher || 'Independent',
+        };
 
-      dispatch({ type: 'SET_PRODUCTS', payload: [...state.products, product] });
-      setNewProduct({});
-      setShowAddProduct(false);
+        const createdProduct = await adminService.createProduct(productData);
+        dispatch({ type: 'SET_PRODUCTS', payload: [...state.products, createdProduct] });
+        
+        setNewProduct({
+          title: '',
+          description: '',
+          price: 0,
+          image: '',
+          category: '',
+          platform: [],
+          releaseDate: '',
+          stock: 0,
+          rating: 0,
+          developer: '',
+          publisher: '',
+        });
+        setShowAddProduct(false);
+      } catch (error) {
+        console.error('Failed to create product:', error);
+        alert('Failed to create product. Please try again.');
+      }
     }
   };
 
@@ -80,46 +149,56 @@ export default function AdminPage() {
     setShowAddProduct(true);
   };
 
-  const handleUpdateProduct = () => {
+  const handleUpdateProduct = async () => {
     if (editingProduct && newProduct.title && newProduct.price) {
-      const updatedProduct: Product = {
-        ...editingProduct,
-        ...newProduct,
-      } as Product;
-
-      const updatedProducts = state.products.map(p => 
-        p.id === editingProduct.id ? updatedProduct : p
-      );
-
-      dispatch({ type: 'SET_PRODUCTS', payload: updatedProducts });
-      setEditingProduct(null);
-      setNewProduct({});
-      setShowAddProduct(false);
+      try {
+        const updatedProduct = await adminService.updateProduct(editingProduct.id!, newProduct);
+        const updatedProducts = state.products.map(p => 
+          p.id === editingProduct.id ? updatedProduct : p
+        );
+        dispatch({ type: 'SET_PRODUCTS', payload: updatedProducts });
+        setEditingProduct(null);
+        setNewProduct({
+          title: '',
+          description: '',
+          price: 0,
+          image: '',
+          category: '',
+          platform: [],
+          releaseDate: '',
+          stock: 0,
+          rating: 0,
+          developer: '',
+          publisher: '',
+        });
+        setShowAddProduct(false);
+      } catch (error) {
+        console.error('Failed to update product:', error);
+        alert('Failed to update product. Please try again.');
+      }
     }
   };
 
-  const handleDeleteProduct = (productId: string) => {
+  const handleDeleteProduct = async (productId: string) => {
     if (confirm('Are you sure you want to delete this product?')) {
-      const updatedProducts = state.products.filter(p => p.id !== productId);
-      dispatch({ type: 'SET_PRODUCTS', payload: updatedProducts });
+      try {
+        await adminService.deleteProduct(productId);
+        const updatedProducts = state.products.filter(p => p.id !== productId);
+        dispatch({ type: 'SET_PRODUCTS', payload: updatedProducts });
+      } catch (error) {
+        console.error('Failed to delete product:', error);
+        alert('Failed to delete product. Please try again.');
+      }
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
-      await orderService.updateOrderStatus(orderId, newStatus);
-      await fetchOrders(); // Refresh orders after update
+      await adminService.updateOrderStatus(orderId, newStatus);
+      await fetchOrders();
     } catch (error) {
       console.error('Failed to update order status:', error);
-    }
-  };
-
-  const handleViewOrder = (orderId: string) => {
-    const order = orders.find(o => o._id === orderId);
-    if (order) {
-      // You can implement a modal or navigation to show order details
-      console.log('Order details:', order);
+      alert('Failed to update order status. Please try again.');
     }
   };
 
@@ -129,6 +208,14 @@ export default function AdminPage() {
       currency: 'USD',
     }).format(price);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -167,24 +254,24 @@ export default function AdminPage() {
 
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex items-center">
-              <div className="p-3 rounded-full bg-yellow-100">
-                <AlertTriangle className="h-6 w-6 text-yellow-600" />
+              <div className="p-3 rounded-full bg-purple-100">
+                <Users className="h-6 w-6 text-purple-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Low Stock</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.lowStockItems}</p>
+                <p className="text-sm font-medium text-gray-600">Total Users</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalUsers}</p>
               </div>
             </div>
           </div>
 
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex items-center">
-              <div className="p-3 rounded-full bg-red-100">
-                <Package className="h-6 w-6 text-red-600" />
+              <div className="p-3 rounded-full bg-yellow-100">
+                <AlertTriangle className="h-6 w-6 text-yellow-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Out of Stock</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.outOfStockItems}</p>
+                <p className="text-sm font-medium text-gray-600">Low Stock</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.lowStockItems}</p>
               </div>
             </div>
           </div>
@@ -213,6 +300,16 @@ export default function AdminPage() {
                 }`}
               >
                 Orders
+              </button>
+              <button
+                onClick={() => setActiveTab('users')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'users'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Users
               </button>
               <button
                 onClick={() => setActiveTab('analytics')}
@@ -337,13 +434,9 @@ export default function AdminPage() {
         {/* Orders Tab */}
         {activeTab === 'orders' && (
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">Orders</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Orders Management</h2>
             <div className="bg-white rounded-lg shadow-md overflow-hidden">
-              {loading ? (
-                <div className="p-8 text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                </div>
-              ) : orders.length === 0 ? (
+              {orders.length === 0 ? (
                 <div className="p-8 text-center">
                   <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No orders yet</h3>
@@ -365,18 +458,19 @@ export default function AdminPage() {
                     {orders.map((order) => (
                       <tr key={order._id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {order._id}
+                          #{order._id.slice(-8)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {order.user.email}
+                          {order.user?.email || 'Unknown'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {new Date(order.createdAt).toLocaleDateString()}
+                          {new Date(order.createdAt || '').toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                            ${order.status === 'completed' ? 'bg-green-100 text-green-800' :
+                            ${order.status === 'completed' || order.status === 'delivered' ? 'bg-green-100 text-green-800' :
                               order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              order.status === 'processing' || order.status === 'shipped' ? 'bg-blue-100 text-blue-800' :
                               'bg-red-100 text-red-800'}`}>
                             {order.status}
                           </span>
@@ -385,12 +479,84 @@ export default function AdminPage() {
                           {formatPrice(order.total)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button
-                            onClick={() => handleViewOrder(order._id)}
-                            className="text-blue-600 hover:text-blue-900 mr-4"
+                          <select
+                            value={order.status}
+                            onChange={(e) => handleUpdateOrderStatus(order._id, e.target.value)}
+                            className="text-sm border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           >
-                            View
-                          </button>
+                            <option value="pending">Pending</option>
+                            <option value="processing">Processing</option>
+                            <option value="shipped">Shipped</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Users Tab */}
+        {activeTab === 'users' && (
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">User Management</h2>
+            <div className="bg-white rounded-lg shadow-md overflow-hidden">
+              {users.length === 0 ? (
+                <div className="p-8 text-center">
+                  <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No users found</h3>
+                  <p className="text-gray-600">Users will appear here once they register.</p>
+                </div>
+              ) : (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Joined</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {users.map((user) => (
+                      <tr key={user._id || user.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {user.name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {user.email}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            user.isAdmin ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {user.isAdmin ? 'Admin' : 'Customer'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {new Date(user.createdAt || '').toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          {!user.isAdmin && (
+                            <button
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this user?')) {
+                                  const userId = user._id || user.id;
+                                  adminService.deleteUser(userId).then(() => {
+                                    setUsers(users.filter(u => (u._id || u.id) !== userId));
+                                  }).catch(console.error);
+                                }
+                              }}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -404,17 +570,21 @@ export default function AdminPage() {
         {/* Analytics Tab */}
         {activeTab === 'analytics' && (
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">Analytics</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Analytics & Reports</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Popular Categories</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Products by Category</h3>
                 <div className="space-y-3">
                   {Array.from(new Set(state.products.map(p => p.category))).map(category => {
                     const count = state.products.filter(p => p.category === category).length;
+                    const percentage = ((count / state.products.length) * 100).toFixed(1);
                     return (
-                      <div key={category} className="flex justify-between">
+                      <div key={category} className="flex justify-between items-center">
                         <span className="text-gray-600">{category}</span>
-                        <span className="font-medium">{count} games</span>
+                        <div className="text-right">
+                          <span className="font-medium">{count} products</span>
+                          <div className="text-xs text-gray-500">{percentage}%</div>
+                        </div>
                       </div>
                     );
                   })}
@@ -423,21 +593,77 @@ export default function AdminPage() {
 
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Inventory Alerts</h3>
-                <div className="space-y-3">
+                <div className="space-y-3 max-h-64 overflow-y-auto">
                   {state.products
-                    .filter(p => typeof p.stock === 'number' && p.stock <= 5)
+                    .filter(p => typeof p.stock === 'number' && p.stock <= 10)
                     .map(product => (
-                      <div key={product.id} className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
-                        <span className="text-sm font-medium text-gray-900">{product.title}</span>
-                        <span className="text-sm text-yellow-600">{product.stock} left</span>
+                      <div key={product.id} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
+                        <div className="flex items-center">
+                          <img
+                            src={product.image}
+                            alt={product.title}
+                            className="w-10 h-10 rounded-lg object-cover mr-3"
+                          />
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{product.title}</p>
+                            <p className="text-xs text-gray-600">{product.category}</p>
+                          </div>
+                        </div>
+                        <span className="text-sm font-bold text-yellow-600">{product.stock} left</span>
                       </div>
                     ))
                   }
-                  {state.products.filter(p => typeof p.stock === 'number' && p.stock <= 5).length === 0 && (
+                  {state.products.filter(p => typeof p.stock === 'number' && p.stock <= 10).length === 0 && (
                     <p className="text-gray-600 text-center py-4">All products are well stocked!</p>
                   )}
                 </div>
               </div>
+
+              {analytics && (
+                <>
+                  <div className="bg-white rounded-lg shadow-md p-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Revenue Overview</h3>
+                    <div className="space-y-4">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Total Revenue</span>
+                        <span className="font-semibold text-green-600">{formatPrice(analytics.totalRevenue)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Total Orders</span>
+                        <span className="font-semibold">{analytics.totalOrders}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Total Users</span>
+                        <span className="font-semibold">{analytics.totalUsers}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Total Products</span>
+                        <span className="font-semibold">{analytics.totalProducts}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg shadow-md p-6">
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Orders</h3>
+                    <div className="space-y-3 max-h-64 overflow-y-auto">
+                      {analytics.recentOrders.slice(0, 5).map(order => (
+                        <div key={order._id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">#{order._id.slice(-8)}</p>
+                            <p className="text-xs text-gray-500">{order.user?.email}</p>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-medium">{formatPrice(order.total)}</span>
+                            <div className="text-xs text-gray-500">
+                              {new Date(order.createdAt || '').toLocaleDateString()}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -455,9 +681,21 @@ export default function AdminPage() {
                     onClick={() => {
                       setShowAddProduct(false);
                       setEditingProduct(null);
-                      setNewProduct({});
+                      setNewProduct({
+                        title: '',
+                        description: '',
+                        price: 0,
+                        image: '',
+                        category: '',
+                        platform: [],
+                        releaseDate: '',
+                        stock: 0,
+                        rating: 0,
+                        developer: '',
+                        publisher: '',
+                      });
                     }}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 hover:text-gray-600 text-2xl"
                   >
                     ×
                   </button>
@@ -485,7 +723,7 @@ export default function AdminPage() {
                       type="number"
                       step="0.01"
                       value={newProduct.price || ''}
-                      onChange={(e) => setNewProduct({ ...newProduct, price: parseFloat(e.target.value) })}
+                      onChange={(e) => setNewProduct({ ...newProduct, price: parseFloat(e.target.value) || 0 })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="0.00"
                     />
@@ -495,13 +733,22 @@ export default function AdminPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Category
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={newProduct.category || ''}
                       onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="RPG, FPS, Sports, etc."
-                    />
+                    >
+                      <option value="">Select category</option>
+                      <option value="Action">Action</option>
+                      <option value="Adventure">Adventure</option>
+                      <option value="RPG">RPG</option>
+                      <option value="Strategy">Strategy</option>
+                      <option value="Sports">Sports</option>
+                      <option value="Racing">Racing</option>
+                      <option value="FPS">FPS</option>
+                      <option value="Horror">Horror</option>
+                      <option value="Simulation">Simulation</option>
+                    </select>
                   </div>
 
                   <div>
@@ -511,7 +758,7 @@ export default function AdminPage() {
                     <input
                       type="number"
                       value={newProduct.stock || ''}
-                      onChange={(e) => setNewProduct({ ...newProduct, stock: parseInt(e.target.value) })}
+                      onChange={(e) => setNewProduct({ ...newProduct, stock: parseInt(e.target.value) || 0 })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="0"
                     />
@@ -540,6 +787,34 @@ export default function AdminPage() {
                       onChange={(e) => setNewProduct({ ...newProduct, publisher: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="Publisher name"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Rating
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="5"
+                      value={newProduct.rating || ''}
+                      onChange={(e) => setNewProduct({ ...newProduct, rating: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="0.0"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Release Date
+                    </label>
+                    <input
+                      type="date"
+                      value={newProduct.releaseDate || ''}
+                      onChange={(e) => setNewProduct({ ...newProduct, releaseDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
 
@@ -575,7 +850,19 @@ export default function AdminPage() {
                     onClick={() => {
                       setShowAddProduct(false);
                       setEditingProduct(null);
-                      setNewProduct({});
+                      setNewProduct({
+                        title: '',
+                        description: '',
+                        price: 0,
+                        image: '',
+                        category: '',
+                        platform: [],
+                        releaseDate: '',
+                        stock: 0,
+                        rating: 0,
+                        developer: '',
+                        publisher: '',
+                      });
                     }}
                     className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                   >

@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { protect, isAdmin } = require('../middleware/authMiddleware');
+const { protect } = require('../middleware/authMiddleware');
+const isAdmin = require('../middleware/isAdmin');
 const orderController = require('../controllers/orderController');
 
 // User routes
-router.route('/')
+router.route('/checkout')
   .post(protect, orderController.createOrder);
 
 router.route('/myorders')
@@ -13,11 +14,12 @@ router.route('/myorders')
 router.route('/:id')
   .get(protect, orderController.getOrderById);
 
-// Admin routes
-router.route('/admin/orders')
+// Admin routes - get all orders
+router.route('/')
   .get(protect, isAdmin, orderController.getAllOrders);
 
-router.route('/admin/orders/:id')
+// Admin routes - update order status
+router.route('/:id/status')
   .put(protect, isAdmin, orderController.updateOrderStatus);
 
 module.exports = router;

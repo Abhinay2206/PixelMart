@@ -18,14 +18,22 @@ export interface OrderItem {
 }
 
 export interface Order {
-  id: string;
   _id: string;
-  user: string;
+  id?: string;
   items: OrderItem[];
-  shippingAddress: ShippingAddress;
-  paymentMethod: 'card' | 'paypal';
   total: number;
-  status: 'pending' | 'processing' | 'shipped' | 'delivered';
+  user: string;
+  status: string;
   createdAt: string;
   updatedAt: string;
+  paymentMethod: string;
+  shippingAddress: {
+    fullName: string;
+    address: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+    email: string;
+  };
 }
